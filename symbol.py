@@ -251,7 +251,7 @@ class Symbols:
     def add_string_literal(token):
         string_literal = StringLiteral(token, Symbols.get_next_id())
         Symbols.string_literals.append(string_literal)
-        string_literal
+        return string_literal
         
     def add_variable(specifier, decl_list):
         for declarator in decl_list:
