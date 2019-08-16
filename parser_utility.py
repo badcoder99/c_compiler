@@ -35,6 +35,12 @@ class Iterator:
     def __bool__(self):
         return self.pos < self.len
         
+    def push(self):
+        self.old_pos = self.pos
+        
+    def pop(self):
+        self.pos = self.old_pos
+        
     def next(self):        
         return self.tokens[self.pos] if self.pos < self.len else self.null_token
 
@@ -45,7 +51,7 @@ class Iterator:
         token = self.next()
 
         if not token:
-            expected(token, what)
+            Iterator.expected(token, what)
               
         elif isinstance(what, str):
             if token.lexeme != what:

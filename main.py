@@ -1,6 +1,7 @@
 
 from lexical import *
 from parser  import *
+from symbol  import *
 
 import sys
 
@@ -18,6 +19,7 @@ if __name__ == '__main__':
             
             try:
                 translation_unit(it)
+                Symbols.view_all()
                 
             except SyntaxException as e:
                 print(e)

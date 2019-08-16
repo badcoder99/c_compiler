@@ -1,35 +1,47 @@
 
+from log            import *
 from parser_utility import *
+from statement      import *
+from symbol         import *
 
 def primary_expression(it):
-    if it.next().kind in [TokenKind.IDENTIFIER, TokenKind.CONSTANT, TokenKind.STRING_LITERAL]:
+    if it.next().kind == TokenKind.IDENTIFIER:
         it.consume()
+    
+    elif it.next().kind == TokenKind.CONSTANT:
+        return Symbols.add_constant(it.consume())
+    
+    elif it.next().kind == TokenKind.STRING_LITERAL:
+        return Symbols.add_string_literal(it.consume())
 
     else:
+        assert False
         it.consume('(')
         expression(it)
         it.consume(')')
+        
     
 def postfix_expression(it):
     while True:
-        primary_expression(it)
+        base_expr = primary_expression(it)
     
         if it.next().lexeme == '[':
             it.consume('[')
-            expression()
+            expr = expression()
             it.consume(']')
             
         elif it.next().lexeme == '(':
             it.consume('(')
-            argument_expression_list(it)
+            arguments = argument_expression_list(it)
             it.consume(')')
             
         elif it.next().lexeme in ['.', '->']:
             it.consume()
-            it.consume(TokenKind.IDENTIFIER)
+            member = it.consume(TokenKind.IDENTIFIER)
            
         elif it.next().lexeme in ['++', '--']:
-            it.consume()
+           assert False
+           it.consume()
         
         else:
             break
@@ -170,28 +182,38 @@ def constant_expression(it):
     conditional_expression(it)
 
 def declaration(it):
-    declaration_specifiers(it)
-    init_declarator_list(it)       
+    decl_list = init_declarator_list(it)       
     it.consume(';')
+    return decl_list
 
 def declaration_specifiers(it):
+    tokens = []
+    
     while it.next().lexeme in STORAGE_CLASSES + TYPE_SPECIFIERS + TYPE_QUALIFIERS + TYPE_NAMES:
-        it.consume()
+        tokens.append(it.consume())
+    
+    return Specifier(tokens)
         
 def init_declarator_list(it):
+    decl_list = []
+    
     if it.next().lexeme != ';':
-        init_declarator(it)
+        decl_list.append(init_declarator(it))
         
         while it.next().lexeme == ',':
             it.consume(',')
-            init_declarator(it)
+            decl_list.append(init_declarator(it))
+            
+    return decl_list
 
 def init_declarator(it):
-    declarator(it)
+    decl_obj = declarator(it)
     
     if it.next().lexeme == '=':
         it.consume('=')
         initializer(it)
+        
+    return decl_obj
 
 def struct_or_union_specifier(it):
     if it.next().lexeme in ['struct', 'union']:
@@ -259,51 +281,59 @@ def enumerator(it):
         constant_expression(it)
         
 def declarator(it):
-    pointer(it)
-    direct_declarator(it)
+    indirection          = pointer(it)
+    decl_obj             = direct_declarator(it)
+    decl_obj.indirection = indirection
+    
+    return decl_obj
 
 def direct_declarator(it):
-    it.consume(TokenKind.IDENTIFIER)
+    name = it.consume(TokenKind.IDENTIFIER)
+    array_size  = None
+    parameters  = None
     
     if it.next().lexeme == '[':
         it.consume('[')
         
         if it.next().lexeme != ']':
-            constant_expression(it)
+            array_size = constant_expression(it)
             
         it.consume(']')
         
     elif it.next().lexeme == '(':
         it.consume('(')
-        
-        if it.next().lexeme != ')':
-            if it.next().kind == TokenKind.IDENTIFIER and it.next().lexeme not in TYPE_NAMES:
-                identifier_list(it)
-            
-            else:
-                parameter_type_list(it)
-        
+        parameters = [] if it.next().lexeme == ')' else parameter_type_list(it)
         it.consume(')')
+            
+    return Declarator(name, array_size, parameters)
             
 def pointer(it):
     if it.next().lexeme == '*':
         it.consume('*')
-        pointer(it)
+        return 1 + pointer(it)
         
     elif it.next().lexeme in TYPE_QUALIFIERS:
+        push_warning(f'ignoring specifier: {it.next().lexeme}')
         type_qualifier_list(it)
-        pointer(it)
+        return pointer(it)
 
+    else:
+        return 0
+        
 def type_qualifier_list(it):
     while it.next().lexeme in TYPE_QUALIFIERS:
         it.consume()
 
 def parameter_type_list(it):
-    parameter_list(it)
+    parameters = parameter_list(it)
     
     if it.next().lexeme == ',' and it.peek().lexeme == '...':
+        error(it.next().file_info(), 'varadic functions not supported')
         it.consume(',')
         it.consume('...')
+        
+    assert False
+    return parameters
 
 def parameter_list(it):
     parameter_declaration(it)
@@ -317,13 +347,6 @@ def parameter_declaration(it):
     
     if it.next().lexeme in ['*'] + TYPE_QUALIFIERS or it.next().kind == TokenKind.IDENTIFIER:
         declarator(it)
-
-def identifier_list(it):
-    it.consume(TokenKind.IDENTIFIER)
-    
-    while it.next().lexeme == ',':
-        it.consume(',')
-        it.consume(TokenKind.IDENTIFIER)
 
 def type_name(it):
     specifier_qualifier_list(it)
@@ -384,7 +407,13 @@ def labeled_statement(it):
 def compound_statement(it):
     it.consume('{')
     
-    if it.next().lexeme != '}':
+    if it.next().lexeme == '}':
+        it.consume('}')
+        return EmptyStatement()
+        
+    else:
+        assert False
+        
         if is_statement(it):
             statement_list(it)
        
@@ -394,7 +423,7 @@ def compound_statement(it):
             if is_statement(it):
                 statement_list(it)
                 
-    it.consume('}')
+        it.consume('}')
 
 def declaration_list(it):
     declaration(it)
@@ -481,18 +510,26 @@ def jump_statement(it):
 def translation_unit(it):
     while it:
         external_declaration(it)
+        check_log('<NULL>')
 
 def external_declaration(it):
+    file_info = it.next().file_info()
+    specifier = declaration_specifiers(it)    
+    check_log(file_info)
+
     try:
-        pos = it.pos
-        function_definition(it)
-   
+        it.push()
+        function_definition(it, specifier)
+        
     except SyntaxException:
-        it.pos = pos
-        declaration(it)
+        it.pop()
+        clear_log()
+        file_info = it.next().file_info()
+        decl_list = declaration(it)
+        check_log(file_info)
+        Symbols.add_variable(specifier, decl_list)
 
-def function_definition(it):
-    declaration_specifiers(it)
-    declarator(it)
-    compound_statement(it)
-
+def function_definition(it, specifier):
+    decl  = declarator(it)
+    stmnt = compound_statement(it)
+    Symbols.add_function(specifier, decl, stmnt)

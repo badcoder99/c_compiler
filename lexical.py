@@ -45,8 +45,11 @@ class Token:
         self.lexeme   = lexeme
         self.kind     = Token.get_kind(self.lexeme)
         
+    def file_info(self):
+        return f'{self.filename}:{self.linenum}'
+        
     def __str__(self):
-        return f'{self.filename}:{self.linenum}: \'{self.lexeme}\' ({self.kind})'
+        return f'{self.file_info()}: \'{self.lexeme}\' ({self.kind})'
             
     def get_kind(lexeme):
         if lexeme in KEYWORDS:
